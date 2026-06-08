@@ -191,7 +191,7 @@
     <div class="video-container"><video id="v3" muted loop></video></div>
 
     <script>
-        const randStr = () => Math.random().toString(36).substring(2);
+        const randStr = () => Math.random().toString(36).substring(2).toUpperCase();
 	    document.title = `${randStr()}${randStr()}${randStr()}`;
 
         const videoInput = document.getElementById('video-input');
