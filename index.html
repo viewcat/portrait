@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+            background-color: black;
+            display: flex;
+            font-family: sans-serif;
+        }
+
+        /* Setup Menu Overlay */
+        #setup-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 10, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 25px;
+            z-index: 10;
+            transition: opacity 0.5s ease;
+        }
+
+        .setup-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 35px;
+            border-radius: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            min-width: 320px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 5px;
+        }
+
+        .control-group label {
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        #speed-input {
+            background: #222222;
+            color: #ffffff;
+            border: 1px solid #444444;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 1rem;
+            width: 70px;
+            text-align: center;
+        }
+
+        #speed-input:focus {
+            outline: none;
+            border-color: #00ffcc;
+        }
+
+        /* Button Styling */
+        .select-btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            padding: 12px 20px;
+            font-size: 0.95rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .select-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-color: #ffffff;
+        }
+
+        .select-btn.loaded {
+            background-color: #004d3d;
+            border-color: #00ffcc;
+            color: #00ffcc;
+        }
+
+        .select-btn.optional {
+            border-style: dashed;
+            color: #b3b3b3;
+        }
+
+        .launch-btn {
+            background-color: #ffffff;
+            color: #000000;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s, background-color 0.2s;
+            margin-top: 10px;
+        }
+
+        .launch-btn:hover:not(:disabled) {
+            transform: scale(1.03);
+            background-color: #eeeeee;
+        }
+
+        .launch-btn:disabled {
+            background-color: #444444;
+            color: #888888;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Video Layout */
+        .video-container {
+            flex: 1;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        video {
+            min-width: 100%;
+            min-height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Setup Menu Overlay -->
+    <div id="setup-overlay">
+        <div class="setup-card">
+            <!-- 1. Video Playback Speed Config -->
+            <div class="control-group">
+                <label for="speed-input">Playback Speed:</label>
+                <input type="number" id="speed-input" min="0.1" max="2.0" step="0.05" value="1.00">
+            </div>
+            
+            <!-- 2. Video Selector Button (Required) -->
+            <label for="video-input" id="video-label" class="select-btn">Choose Video</label>
+            <input type="file" id="video-input" accept="video/*">
+
+            <!-- 3. Audio Selector Button (Optional) -->
+            <label for="audio-input" id="audio-label" class="select-btn optional">Choose Audio (Optional)</label>
+            <input type="file" id="audio-input" accept="audio/*">
+
+            <!-- 4. Launch Trigger -->
+            <button id="launch-btn" class="launch-btn" disabled>Start</button>
+        </div>
+    </div>
+
+    <!-- Hidden Audio Element -->
+    <audio id="bg-audio" loop></audio>
+
+    <!-- Video Containers -->
+    <div class="video-container"><video id="v1" muted loop></video></div>
+    <div class="video-container"><video id="v2" muted loop></video></div>
+    <div class="video-container"><video id="v3" muted loop></video></div>
+
+    <script>
+        const randStr = () => Math.random().toString(36).substring(2);
+	    document.title = `${randStr()}${randStr()}${randStr()}`;
+
+        const videoInput = document.getElementById('video-input');
+        const audioInput = document.getElementById('audio-input');
+        const videoLabel = document.getElementById('video-label');
+        const audioLabel = document.getElementById('audio-label');
+        const speedInput = document.getElementById('speed-input');
+        const launchBtn = document.getElementById('launch-btn');
+        const overlay = document.getElementById('setup-overlay');
+        const bgAudio = document.getElementById('bg-audio');
+        
+        const v1 = document.getElementById('v1');
+        const v2 = document.getElementById('v2');
+        const v3 = document.getElementById('v3');
+        const videos = [v1, v2, v3];
+
+        let targetSpeed = 1.0;
+
+        videoInput.addEventListener('change', function(event) {
+            if (event.target.files.length > 0) {
+                videoLabel.textContent = "✓ Video Selected";
+                videoLabel.classList.add('loaded');
+                launchBtn.disabled = false;
+            }
+        });
+
+        audioInput.addEventListener('change', function(event) {
+            if (event.target.files.length > 0) {
+                audioLabel.textContent = "✓ Audio Selected";
+                audioLabel.classList.remove('optional');
+                audioLabel.classList.add('loaded');
+            }
+        });
+
+        // NEWEST
+        let serverTimeOffset = 0;
+        let syncIntervalId = null;
+
+        // Step 1: Calculate high-precision network time offset using a millisecond API
+        async function syncNetworkTime() {
+            // Check if the file is running locally (file:// protocol)
+            if (window.location.protocol === 'file:') {
+                console.log("Running as a local offline file. Relying on local device system clocks.");
+                serverTimeOffset = 0; // No network sync possible locally, use hardware clock
+                return;
+            }
+
+            // High-precision endpoint providing exact Unix milliseconds
+            const timeApiUrl = 'https://timeapi.io/api/v1/time/current/unix_ms';
+            const samples = 3; // Take multiple samples to filter out network spikes
+            let totalOffset = 0;
+            let successfulSamples = 0;
+
+            for (let i = 0; i < samples; i++) {
+                const startTime = performance.now();
+                try {
+                    // Fetching data from the server
+                    const response = await fetch(timeApiUrl);
+                    const data = await response.json();
+                    const endTime = performance.now();
+                    
+                    // Calculate one-way network latency
+                    const latency = (endTime - startTime) / 2;
+                    
+                    // Extract the milliseconds from the correct key
+                    const trueServerTime = Number(data.unix_timestamp) + latency;
+                    
+                    totalOffset += (trueServerTime - Date.now());
+                    successfulSamples++;
+                } catch (err) {
+                    console.warn(`High-precision time sync attempt ${i + 1} failed.`, err);
+                }
+            }
+
+            if (successfulSamples > 0) {
+                serverTimeOffset = totalOffset / successfulSamples;
+                console.log(`System clock offset calculated safely: ${serverTimeOffset}ms`);
+            } else {
+                serverTimeOffset = 0;
+            }
+        }
+
+        // Helper to get global time down to milliseconds
+        function getAccurateTime() {
+            return Date.now() + serverTimeOffset;
+        }
+
+        launchBtn.addEventListener('click', async function() {
+            targetSpeed = parseFloat(speedInput.value) || 1.0;
+
+            // Await server time sync before launching video
+            await syncNetworkTime();
+
+            // FIXED: Added [0] back so the script reads the actual file item
+            const videoFile = videoInput.files[0];
+            const audioFile = audioInput.files[0];
+
+            if (!videoFile) {
+                alert("Please select a video file first!");
+                return;
+            }
+
+            const videoURL = URL.createObjectURL(videoFile);
+            videos.forEach(v => {
+                v.src = videoURL;
+                v.style.display = 'block';
+            });
+
+            const queueList = [...videos];
+            if (audioFile) {
+                bgAudio.src = URL.createObjectURL(audioFile);
+                queueList.push(bgAudio);
+            }
+
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.remove(), 500);
+
+            Promise
+                .all(queueList.map(media => new Promise(resolve => media.oncanplaythrough = resolve)))
+                .then(() => {
+                    // Start looping playback
+                    videos.forEach(v => {
+                        v.loop = true;
+                        v.playbackRate = targetSpeed;
+                        v.play().catch(err => console.log(err));
+                    });
+
+                    if (audioFile) {
+                        bgAudio.loop = true;
+                        bgAudio.playbackRate = 1.0;
+                        bgAudio.play().catch(err => console.log(err));
+                    }
+
+                    // Engage the master micro-adjustment engine
+                    startGlobalTimelineSync();
+                });
+        });
+
+        // Step 2 & 3: Master Sync Engine
+        function startGlobalTimelineSync() {
+            if (syncIntervalId) clearInterval(syncIntervalId);
+
+            // Run updates frequently (every 200ms) for tight frame control
+            syncIntervalId = setInterval(() => {
+                const globalTimeSeconds = getAccurateTime() / 1000;
+
+                videos.forEach(v => {
+                    if (!v.duration) return;
+
+                    // Universal target based entirely on absolute global time
+                    const scaledTimeline = globalTimeSeconds * targetSpeed;
+                    const targetTime = scaledTimeline % v.duration;
+
+                    const drift = v.currentTime - targetTime;
+                    const absoluteDrift = Math.abs(drift);
+
+                    // Hard Snap Threshold: If out by more than 300ms, force sync
+                    if (absoluteDrift > 0.3) {
+                        v.currentTime = targetTime;
+                        v.playbackRate = targetSpeed; // Reset speed
+                    } 
+                    // Micro-Correction: If slightly drifting, nudge playback speed
+                    else if (absoluteDrift > 0.03) { // ~1 frame tolerance (approx 33ms at 30fps)
+                        if (drift > 0) {
+                            // Video is slightly ahead, slow it down
+                            v.playbackRate = targetSpeed * 0.98;
+                        } else {
+                            // Video is slightly behind, speed it up
+                            v.playbackRate = targetSpeed * 1.02;
+                        }
+                    } 
+                    // Locked-in: Speed is perfect
+                    else {
+                        v.playbackRate = targetSpeed;
+                    }
+                });
+            }, 200);
+        }
+
+        // Periodically refresh network time context every 5 minutes (only when hosted online)
+        setInterval(() => {
+            if (window.location.protocol !== 'file:') {
+                syncNetworkTime();
+            }
+        }, 300000);
+    </script>
+</body>
+</html>
