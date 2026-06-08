@@ -168,6 +168,11 @@
                 <label for="speed-input">Audio Volume:</label>
                 <input type="number" id="audio-volume" min="0.1" max="1.0" step="0.05" value="1.00">
             </div>
+
+			<div class="control-group">
+                <label for="speed-input">Direct Link:</label>
+                <input type="text" id="direct-link" placeholder="URL">
+            </div>
             
             <!-- 2. Video Selector Button (Required) -->
             <label for="video-input" id="video-label" class="select-btn">Choose Video</label>
@@ -203,6 +208,7 @@
         const overlay = document.getElementById('setup-overlay');
         const bgAudio = document.getElementById('bg-audio');
 		const audioVolume = document.getElementById('audio-volume');
+		const directLink = document.getElementById('direct-link');
         
         const v1 = document.getElementById('v1');
         const v2 = document.getElementById('v2');
@@ -210,6 +216,16 @@
         const videos = [v1, v2, v3];
 
         let targetSpeed = 1.0;
+
+		directLink.addEventListener('input', (event) => {
+	        const currentValue = event.target.value.trim();
+	
+	        if (currentValue === "") {
+	            launchBtn.disabled = true;
+	        } else {
+	            launchBtn.disabled = false;
+	        }
+	    });
 
         videoInput.addEventListener('change', function(event) {
             if (event.target.files.length > 0) {
@@ -229,15 +245,23 @@
 
 		let syncIntervalId = null;
 
-		launchBtn.addEventListener('click', function() {
+		launchBtn.addEventListener('click', async function() {
 		    targetSpeed = parseFloat(speedInput.value) || 1.0;
 		
-		    const videoFile = videoInput.files[0];
+		    let videoFile = videoInput.files[0];
 		    const audioFile = audioInput.files[0];
 		
 		    if (!videoFile) {
-		        alert("Please select a video file first!");
-		        return;
+				try {
+			        // 1. Fetch the raw video data from the external URL
+			        const response = await fetch(directLink.value);
+			        
+			        // 2. Convert the network response into a binary Blob object
+			        videoFile = await response.blob();
+				} catch (err) {
+					alert('No video file or link detected.');
+					return;
+				}
 		    }
 		
 		    const videoURL = URL.createObjectURL(videoFile);
