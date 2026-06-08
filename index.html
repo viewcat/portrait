@@ -221,157 +221,97 @@
             }
         });
 
-        // NEWEST
-        let serverTimeOffset = 0;
-        let syncIntervalId = null;
+		let syncIntervalId = null;
 
-        // Step 1: Calculate high-precision network time offset using a millisecond API
-        async function syncNetworkTime() {
-            // Check if the file is running locally (file:// protocol)
-            if (window.location.protocol === 'file:') {
-                console.log("Running as a local offline file. Relying on local device system clocks.");
-                serverTimeOffset = 0; // No network sync possible locally, use hardware clock
-                return;
-            }
+		launchBtn.addEventListener('click', function() {
+		    targetSpeed = parseFloat(speedInput.value) || 1.0;
+		
+		    const videoFile = videoInput.files[0];
+		    const audioFile = audioInput.files[0];
+		
+		    if (!videoFile) {
+		        alert("Please select a video file first!");
+		        return;
+		    }
+		
+		    const videoURL = URL.createObjectURL(videoFile);
+		    videos.forEach(v => {
+		        v.src = videoURL;
+		        v.style.display = 'block';
+		    });
+		
+		    const queueList = [...videos];
+		    if (audioFile) {
+		        bgAudio.src = URL.createObjectURL(audioFile);
+		        queueList.push(bgAudio);
+		    }
+		
+		    overlay.style.opacity = '0';
+		    setTimeout(() => overlay.remove(), 500);
+		
+		    Promise
+		        .all(queueList.map(media => new Promise(resolve => media.oncanplaythrough = resolve)))
+		        .then(() => {
+		            // Start looping playback
+		            videos.forEach(v => {
+		                v.loop = true;
+		                v.playbackRate = targetSpeed;
+		                v.play().catch(err => console.log(err));
+		            });
+		
+		            if (audioFile) {
+		                bgAudio.loop = true;
+		                bgAudio.playbackRate = 1.0;
+		                bgAudio.play().catch(err => console.log(err));
+		            }
+		
+		            // Engage the master micro-adjustment engine using system clock
+		            startGlobalTimelineSync();
+		        });
+		});
+		
+		// Master Sync Engine using pure system time
+		function startGlobalTimelineSync() {
+		    if (syncIntervalId) clearInterval(syncIntervalId);
+		
+		    // Run updates frequently (every 200ms) for tight frame control
+		    syncIntervalId = setInterval(() => {
+		        // Grab the absolute system time down to milliseconds and convert to seconds
+		        const globalTimeSeconds = Date.now() / 1000;
+		
+		        videos.forEach(v => {
+		            if (!v.duration) return;
+		
+		            // Universal target based entirely on absolute Unix system time
+		            const scaledTimeline = globalTimeSeconds * targetSpeed;
+		            const targetTime = scaledTimeline % v.duration;
+		
+		            const drift = v.currentTime - targetTime;
+		            const absoluteDrift = Math.abs(drift);
+		
+		            // Hard Snap Threshold: If out by more than 300ms, force sync
+		            if (absoluteDrift > 0.3) {
+		                v.currentTime = targetTime;
+		                v.playbackRate = targetSpeed; // Reset speed
+		            } 
+		            // Micro-Correction: If slightly drifting, nudge playback speed
+		            else if (absoluteDrift > 0.03) { // ~1 frame tolerance (approx 33ms at 30fps)
+		                if (drift > 0) {
+		                    // Video is slightly ahead, slow it down
+		                    v.playbackRate = targetSpeed * 0.98;
+		                } else {
+		                    // Video is slightly behind, speed it up
+		                    v.playbackRate = targetSpeed * 1.02;
+		                }
+		            } 
+		            // Locked-in: Speed is perfect
+		            else {
+		                v.playbackRate = targetSpeed;
+		            }
+		        });
+		    }, 200);
+		}
 
-            // High-precision endpoint providing exact Unix milliseconds
-            const timeApiUrl = 'https://timeapi.io/api/v1/time/current/unix_ms';
-            const samples = 3; // Take multiple samples to filter out network spikes
-            let totalOffset = 0;
-            let successfulSamples = 0;
-
-            for (let i = 0; i < samples; i++) {
-                const startTime = performance.now();
-                try {
-                    // Fetching data from the server
-                    const response = await fetch(timeApiUrl);
-                    const data = await response.json();
-                    const endTime = performance.now();
-                    
-                    // Calculate one-way network latency
-                    const latency = (endTime - startTime) / 2;
-                    
-                    // Extract the milliseconds from the correct key
-                    const trueServerTime = Number(data.unix_timestamp) + latency;
-                    
-                    totalOffset += (trueServerTime - Date.now());
-                    successfulSamples++;
-                } catch (err) {
-                    console.warn(`High-precision time sync attempt ${i + 1} failed.`, err);
-                }
-            }
-
-            if (successfulSamples > 0) {
-                serverTimeOffset = totalOffset / successfulSamples;
-                console.log(`System clock offset calculated safely: ${serverTimeOffset}ms`);
-            } else {
-                serverTimeOffset = 0;
-            }
-        }
-
-        // Helper to get global time down to milliseconds
-        function getAccurateTime() {
-            return Date.now() + serverTimeOffset;
-        }
-
-        launchBtn.addEventListener('click', async function() {
-            targetSpeed = parseFloat(speedInput.value) || 1.0;
-
-            // Await server time sync before launching video
-            await syncNetworkTime();
-
-            // FIXED: Added [0] back so the script reads the actual file item
-            const videoFile = videoInput.files[0];
-            const audioFile = audioInput.files[0];
-
-            if (!videoFile) {
-                alert("Please select a video file first!");
-                return;
-            }
-
-            const videoURL = URL.createObjectURL(videoFile);
-            videos.forEach(v => {
-                v.src = videoURL;
-                v.style.display = 'block';
-            });
-
-            const queueList = [...videos];
-            if (audioFile) {
-                bgAudio.src = URL.createObjectURL(audioFile);
-                queueList.push(bgAudio);
-            }
-
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.remove(), 500);
-
-            Promise
-                .all(queueList.map(media => new Promise(resolve => media.oncanplaythrough = resolve)))
-                .then(() => {
-                    // Start looping playback
-                    videos.forEach(v => {
-                        v.loop = true;
-                        v.playbackRate = targetSpeed;
-                        v.play().catch(err => console.log(err));
-                    });
-
-                    if (audioFile) {
-                        bgAudio.loop = true;
-                        bgAudio.playbackRate = 1.0;
-                        bgAudio.play().catch(err => console.log(err));
-                    }
-
-                    // Engage the master micro-adjustment engine
-                    startGlobalTimelineSync();
-                });
-        });
-
-        // Step 2 & 3: Master Sync Engine
-        function startGlobalTimelineSync() {
-            if (syncIntervalId) clearInterval(syncIntervalId);
-
-            // Run updates frequently (every 200ms) for tight frame control
-            syncIntervalId = setInterval(() => {
-                const globalTimeSeconds = getAccurateTime() / 1000;
-
-                videos.forEach(v => {
-                    if (!v.duration) return;
-
-                    // Universal target based entirely on absolute global time
-                    const scaledTimeline = globalTimeSeconds * targetSpeed;
-                    const targetTime = scaledTimeline % v.duration;
-
-                    const drift = v.currentTime - targetTime;
-                    const absoluteDrift = Math.abs(drift);
-
-                    // Hard Snap Threshold: If out by more than 300ms, force sync
-                    if (absoluteDrift > 0.3) {
-                        v.currentTime = targetTime;
-                        v.playbackRate = targetSpeed; // Reset speed
-                    } 
-                    // Micro-Correction: If slightly drifting, nudge playback speed
-                    else if (absoluteDrift > 0.03) { // ~1 frame tolerance (approx 33ms at 30fps)
-                        if (drift > 0) {
-                            // Video is slightly ahead, slow it down
-                            v.playbackRate = targetSpeed * 0.98;
-                        } else {
-                            // Video is slightly behind, speed it up
-                            v.playbackRate = targetSpeed * 1.02;
-                        }
-                    } 
-                    // Locked-in: Speed is perfect
-                    else {
-                        v.playbackRate = targetSpeed;
-                    }
-                });
-            }, 200);
-        }
-
-        // Periodically refresh network time context every 5 minutes (only when hosted online)
-        setInterval(() => {
-            if (window.location.protocol !== 'file:') {
-                syncNetworkTime();
-            }
-        }, 300000);
     </script>
 </body>
 </html>
